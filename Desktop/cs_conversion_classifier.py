@@ -119,7 +119,3 @@ clf.fit(x_train, y_train)
 print clf.best_estimator_
 print clf.best_score_
 print clf.best_params_
-
-
-
-asdf
