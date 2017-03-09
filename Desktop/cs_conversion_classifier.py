@@ -100,7 +100,6 @@ def eval_model(clf):
 clf = [
     KNeighborsClassifier(),
     #SVC(),
-    #GaussianProcessClassifier(),
     DecisionTreeClassifier(),
     RandomForestClassifier(),
     MLPClassifier(),
