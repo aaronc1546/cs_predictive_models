@@ -20,8 +20,18 @@ from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 from sklearn.model_selection import GridSearchCV
 
+################################################################################
+############################# Data extraction ##################################
+################################################################################
+
+db_creds = "dbname ='dev'host ='stats-eval.c2qnlyfqjn11.us-west-2.redshift.amazonaws.com' user ='aaron_christensen' password ='Abcd1234' port ='5439'"
+
+#Set the file path for the SQL query
+sql_file_path = 'Documents/cs_conversion_classifier.sql'
+csv_file_path = 'Desktop/model_phone_training.csv'
+
 def run_query(query):
-    conn = psycopg2.connect("dbname ='dev'host ='stats-eval.c2qnlyfqjn11.us-west-2.redshift.amazonaws.com' user ='aaron_christensen' password ='Abcd1234' port ='5439'")
+    conn = psycopg2.connect(db_creds)
     cur = conn.cursor()
     cur.execute(query)
     column_names = [desc[0] for desc in cur.description]
@@ -31,20 +41,23 @@ def run_query(query):
     conn.close()
     df.to_csv('Desktop/model_phone_training.csv', index = False)
 
-with open('Documents/cs_conversion_classifier.sql', 'r') as sql_script:
+with open(sql_file_path, 'r') as sql_script:
     query = sql_script.read()
 
 if raw_input('Refresh data?: ').lower() in ('y','yes'):
-    run_query(query)
+    df = run_query(query)
 
-df = pd.read_csv('Desktop/model_phone_training.csv')
+df = pd.read_csv(csv_file_path)
 
-limit = min(500000,len(df))
-df = df[:limit]
+################################################################################
+############################# Data processing ##################################
+################################################################################
 
 x_all_raw = df[list(df.columns[:-2])]
-y_all = df[list(df.columns[-1:])]
-y_all = np.ravel(y_all)
+y_all = np.ravel(df[list(df.columns[-1:])])
+
+""" Replace yes/no values with 1/0, create dummy variables from columns with
+multiple values """
 
 def preprocess_features(X):
     outX = pd.DataFrame(index=X.index)
@@ -62,7 +75,7 @@ def preprocess_features(X):
     outX = outX.astype(int)
     return outX
 
-x_all = preprocess_features(x_all_raw)
+""" Normalize non-boolean data """
 
 def normalize(x):
     for i in x:
@@ -72,10 +85,19 @@ def normalize(x):
     x = x.fillna(value=0)
     return x
 
+""" Split data into training/test set """
+
+x_all = preprocess_features(x_all_raw)
 x_all = normalize(x_all)
 
 x_train, x_test, y_train, y_test = train_test_split(x_all, y_all, test_size=0.3,
     random_state=29)
+
+################################################################################
+################################ Fit model  ####################################
+################################################################################
+
+""" Fit model, make predictions """
 
 def fit_model(clf, x_train, y_train, x_test, y_test):
     classifier = clf.__class__.__name__
@@ -97,35 +119,27 @@ def eval_model(clf):
         print 'Finished: ' + i.__class__.__name__
     return table
 
-clf = [
-    KNeighborsClassifier(),
-    #SVC(),
-    DecisionTreeClassifier(),
-    RandomForestClassifier(),
-    MLPClassifier(),
-    AdaBoostClassifier(),
-    GaussianNB(),
-    QuadraticDiscriminantAnalysis()
-    ]
+################################################################################
+################# Optimizing model params with GridSearchCV ####################
+################################################################################
 
-print eval_model(clf)
+gs_clf = AdaBoostClassifier(random_state=5)
+gs_parameters = {'learning_rate': [0.1,0.2,0.3],
+              'n_estimators': [400,600,800]
+             }
 
-clf = RandomForestClassifier(n_jobs=-1,random_state=5)
-clf.fit(x_train, y_train)
+def grid_search(clf, parameters):
+    clf = GridSearchCV(clf, parameters)
+    clf.fit(x_train, y_train)
+    y_pred_test = clf.predict(x_test)
+    #print clf.best_estimator_
+    print clf.best_score_
+    print clf.best_params_
+    print sklearn.metrics.confusion_matrix(y_test, y_pred_test)
 
-y_pred_test = clf.predict(x_test)
-print sklearn.metrics.confusion_matrix(y_test, y_pred_test)
-
-#
-# parameters = {'n_estimators':[3, 9],
-#               'max_features':[5, 10, 20]
-#              }
-# clf = GridSearchCV(clf, parameters)
-
-# clf.fit(x_train, y_train)
-# print clf.best_estimator_
-# print clf.best_score_
-# print clf.best_params_
+################################################################################
+########################## Feature importance plot  ############################
+################################################################################
 
 def feat_imp_chart():
     feature_importance = clf.feature_importances_
@@ -141,4 +155,26 @@ def feat_imp_chart():
     plt.gca().xaxis.grid(True)
     plt.show()
 
-feat_imp_chart()
+################################################################################
+################################### Run it  ####################################
+################################################################################
+
+# Best model so far
+clf = AdaBoostClassifier(algorithm='SAMME.R', base_estimator=None,
+          learning_rate=0.1, n_estimators=400, random_state=5)
+
+clf_exp = [
+    KNeighborsClassifier(),
+    #SVC(), #This is super slow
+    DecisionTreeClassifier(),
+    RandomForestClassifier(),
+    MLPClassifier(),
+    AdaBoostClassifier(),
+    #GaussianNB(), #Low accuracy
+    #QuadraticDiscriminantAnalysis() #Low accuracy
+    ]
+
+print eval_model(clf_exp)
+
+#grid_search(gs_clf, gs_parameters)
+# feat_imp_chart()
