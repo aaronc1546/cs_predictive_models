@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.datasets import make_moons, make_circles, make_classification
 from sklearn.neural_network import MLPClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
@@ -18,9 +17,7 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
-from sklearn.metrics import f1_score
-from sklearn.metrics import accuracy_score
-from sklearn.metrics import precision_recall_fscore_support
+from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 from sklearn.model_selection import GridSearchCV
 
 def run_query(query):
@@ -67,6 +64,16 @@ def preprocess_features(X):
 
 x_all = preprocess_features(x_all_raw)
 
+def normalize(x):
+    for i in x:
+        if len(x_all[i].unique()) > 2:
+            x_all[i] = np.log(x_all[i])
+            x_all[i] = x_all[i].replace('-inf',0)
+    x = x.fillna(value=0)
+    return x
+
+x_all = normalize(x_all)
+
 x_train, x_test, y_train, y_test = train_test_split(x_all, y_all, test_size=0.3,
     random_state=29)
 
@@ -80,6 +87,8 @@ def fit_model(clf, x_train, y_train, x_test, y_test):
     return classifier, precision, recall, f1, acc
 
 def eval_model(clf):
+    table = pd.DataFrame(index = None, columns = ['Classifier',
+        'Precision', 'Recall', 'F1 Score', 'Accuracy'])
     for i in clf:
         classifier, precision, recall, f1, acc = fit_model(i, x_train,
             y_train, x_test, y_test)
@@ -95,27 +104,42 @@ clf = [
     DecisionTreeClassifier(),
     RandomForestClassifier(),
     MLPClassifier(),
-    #AdaBoostClassifier(),
+    AdaBoostClassifier(),
     GaussianNB(),
     QuadraticDiscriminantAnalysis()
     ]
 
-# table = pd.DataFrame(index = None, columns = ['Classifier',
-#     'F1 Score', 'Accuracy',])
-
-# table = pd.DataFrame(index = None, columns = ['Classifier',
-#     'Precision', 'Recall', 'F1 Score', 'Accuracy'])
-#
-# print eval_model(clf)
+print eval_model(clf)
 
 clf = RandomForestClassifier(n_jobs=-1,random_state=5)
-
-parameters = {'n_estimators':[3, 9],
-              'max_features':[5, 10, 20]
-             }
-clf = GridSearchCV(clf, parameters)
-
 clf.fit(x_train, y_train)
-print clf.best_estimator_
-print clf.best_score_
-print clf.best_params_
+
+y_pred_test = clf.predict(x_test)
+print sklearn.metrics.confusion_matrix(y_test, y_pred_test)
+
+#
+# parameters = {'n_estimators':[3, 9],
+#               'max_features':[5, 10, 20]
+#              }
+# clf = GridSearchCV(clf, parameters)
+
+# clf.fit(x_train, y_train)
+# print clf.best_estimator_
+# print clf.best_score_
+# print clf.best_params_
+
+def feat_imp_chart():
+    feature_importance = clf.feature_importances_
+    column_names = np.asarray(list(x_train.columns.values))
+    feature_importance = 100.0 * (feature_importance / feature_importance.max())
+    sorted_idx = np.argsort(feature_importance)
+    pos = np.arange(sorted_idx.shape[0]) + .5
+    plt.subplot(1, 2, 2)
+    plt.barh(pos, feature_importance[sorted_idx], align='center')
+    plt.yticks(pos, column_names[sorted_idx])
+    plt.xlabel('Relative Importance')
+    plt.title('Variable Importance')
+    plt.gca().xaxis.grid(True)
+    plt.show()
+
+feat_imp_chart()
